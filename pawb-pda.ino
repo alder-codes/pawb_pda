@@ -1,52 +1,22 @@
-#include <ArduinoJson.h>
-#include <ArduinoJson.hpp>
-#include <deque>
-#include <vector>
-#include <string>
-#include <unordered_map>
-#include <WiFi.h>
-#include <SD.h>
-#include <sd_defines.h>
-#include <sd_diskio.h>
-#include <Wire.h>
-#include <pystring.h>
-#include <M5GFX.h>
-#include <M5Unified.h>
-
-
-
-// Different versions of the framework have different SNTP header file names and availability.
-#if __has_include(<esp_sntp.h>)
-#include <esp_sntp.h>
-#define SNTP_ENABLED 1
-#elif __has_include(<sntp.h>)
-#include <sntp.h>
-#define SNTP_ENABLED 1
-#endif
-
-#ifndef SNTP_ENABLED
-#define SNTP_ENABLED 0
-#endif
+#include "pawb-pda.h"
 
 using namespace std;
 
-static const int CARDKB_ADDR = 0x5F;
 static int loop_index = 0;
 
-
-static int margin = 0;
 static int panel_width = 0;
 static int panel_height = 0;
 
 static int char_w = 0;
 static int char_h = 0;
-
+static bool multiline = false;
 static vector<string> input_buffer = { "" };
 static vector<string> input_history = {};
-static vector<string> app_menu = { "collect", "inbox", "notes" };
+static vector<string> app_menu = { "collect", "inbox", "notes", "reset" };
 static void (*NextAction)() = NULL;
 
 M5Canvas panel = M5Canvas( &M5.Display );
+
 
 void setup()
 {
@@ -60,30 +30,37 @@ void setup()
     Serial.println( "SD Card not found." );
     Nope();
   }
-  margin = 28;
-  panel_width = M5.Display.width()-(margin*2);
-  panel_height = M5.Display.height()-(margin*2);
+  Serial.println( "=== start ===" );
+  panel_width = 100;
+  panel_height = 100;
   //Serial.printf( "panel is %d by %d \n", panel_width, panel_height );
   M5.Display.setRotation( 0 );
   M5.Display.setEpdMode( epd_mode_t::epd_fastest );
   panel.createSprite(panel_width,panel_height);
+  panel.setFont( &fonts::FreeMonoBold18pt7b );
+  panel.setCursor(0,0);
+  panel.print( "PA" );
+  panel.print( "\nW");
+  char_w = panel.getCursorX();
+  char_h = panel.getCursorY();
+  Serial.printf( "char_w(%d) and char_h(%d)\n", char_w, char_h );
+  panel.print( "B\n");
+  panel.deleteSprite();
+  panel_width = char_w * (floor( (double) M5.Display.width() / char_w ) - 2);
+  panel_height = char_h * ( floor( (double) M5.Display.height() / char_h ) - 2 );
+  Serial.printf( "panel_width(%d) and panel_height(%d)\n", panel_width, panel_height );
+  panel.createSprite( panel_width, panel_height );
+  panel.setFont( &fonts::FreeMonoBold18pt7b );
   panel.clear(TFT_WHITE);
   panel.setTextSize(1);
   panel.setTextWrap(true);
-  panel.setFont( &fonts::FreeMonoBold18pt7b );
-  //panel.loadFont( SD, "/fonts/MonoLisa28.vlw" );
   panel.setTextColor( TFT_BLACK, TFT_WHITE );
   panel.setTextScroll(true);
   panel.setCursor(0,0);
   panel.print( "PA" );
-  panel.print( "\W");
-  char_w = panel.getCursorX();
-  char_h = panel.getCursorY();
-  panel.print( "B\n");
-  Serial.println( "=== start ===" );
-  Serial.printf( "Screen %d by %d\n", panel_width, panel_height );
-  Serial.printf( "Char %d by %d\n", char_w, char_h );
-  panel.pushSprite(margin,margin);
+  panel.print( "\nWB\n" );
+  panel.pushSprite(char_w,char_h);
+  Serial.println( "=== loop ===" );
 }
 
 void loop()
@@ -148,27 +125,27 @@ void Nope()
 void PanelPrint( string str )
 {
   panel.print( str.data() );
-  panel.pushSprite(margin,margin);
+  panel.pushSprite(char_w,char_h);
 }
 
 void PanelPrint( char letter )
 {
   panel.print( letter );
-  panel.pushSprite(margin,margin);
+  panel.pushSprite(char_w,char_h);
 }
 
 void PanelPrintLn( string str )
 {
   panel.print( str.data() );
   panel.print( "\n" );
-  panel.pushSprite(margin,margin);
+  panel.pushSprite(char_w,char_h);
 }
 
 void PanelPrintLn( char letter )
 {
   panel.print( letter );
   panel.print( "\n" );
-  panel.pushSprite(margin,margin);
+  panel.pushSprite(char_w,char_h);
 }
 
 // In incriments of char_w and char_h
@@ -180,7 +157,7 @@ void MoveCursor( int dx, int dy )
 void CursorHome()
 {
   // say line/y, but at start
-  panel.setCursor( margin, panel.getCursorY() );
+  panel.setCursor( char_w, panel.getCursorY() );
 }
 
 void HandleNewCharacter( char letter )
@@ -225,14 +202,21 @@ void HandleNewCharacter( char letter )
         Serial.println( "input buffer already empty" );
       }
     }
-    else if ( letter == 0x0D ) // enter key
+    else if ( letter == 0x0D ) // enter key: only adds return multi-line
     {
-      // input_buffer.back() += "\n"; technically correct but not good ux
-      input_buffer.push_back("");
-      Serial.println( "Added New Line" );
-      PanelPrint( "\n" );
+      if( multiline )
+      {
+        // input_buffer.back() += "\n"; technically correct but not good ux
+        input_buffer.push_back("");
+        Serial.println( "Added New Line" );
+        PanelPrint( "\n" );
+      }
+      else
+      {
+        Serial.println( "New char is 'return' but multi-line is off" );
+      }
     }
-    else if ( letter == 0xA3 ) // fn+enter
+    else if ( letter == 0xA3 ) // fn+enter: is always the submit input command
     {
       Serial.println("fn+enter");
       string joined = pystring::join( "\n", input_buffer );
@@ -241,7 +225,14 @@ void HandleNewCharacter( char letter )
       input_buffer.clear();
       input_buffer.push_back( "" );
       PanelPrintLn(" <- ");
-      ReadCommand();
+      if( NextAction == NULL )
+      {
+        ReadCommand();
+      }
+      else
+      {
+        NextAction();
+      }
     }
     else if  ( letter >= 0x20 ) // characters
     {
@@ -274,7 +265,21 @@ void ReadCommand()
       {
         panel.println( ( "- " + option ).data() );
       }
-      panel.pushSprite(margin,margin);
+      panel.pushSprite(char_w,char_h);
+    }
+    else if ( command == "collect" )
+    {
+      PanelPrintLn("input: ");
+      multiline = true;
+      NextAction = SaveNewItem;
+    }
+    else if ( command == "inbox" )
+    {
+      vector<string> inbox_contents = ListDirectory( SD, "/inbox/" );
+      for( int i = 0; i < inbox_contents.size(); i++ )
+      {
+        PanelPrintLn( "- " + inbox_contents[i] );
+      }
     }
     else if ( command == "reset" )
     {
@@ -287,3 +292,43 @@ void ReadCommand()
     }
   }
 }
+
+
+void SaveNewItem()
+{
+  PanelPrintLn("[saving to inbox]");
+  NextAction = NULL;
+  multiline = false;
+}
+
+
+vector<string> ListDirectory(fs::FS &fs, const char *dirname)
+{
+  vector<string> listing = {};
+
+  File root = fs.open(dirname);
+  if (!root)
+  {
+    Serial.println("Failed to open directory");
+    return listing;
+  }
+  if (!root.isDirectory())
+  {
+    Serial.println("Not a directory");
+    return listing;
+  }
+
+  File file = root.openNextFile();
+  while (file)
+  {
+    if( !file.isDirectory() )
+    {
+      auto file_name = file.name();
+      listing.push_back( file_name );
+    }
+    file = root.openNextFile();
+  }
+  return listing;
+}
+
+
