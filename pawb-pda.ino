@@ -38,9 +38,8 @@ static int margin = 0;
 static int panel_width = 0;
 static int panel_height = 0;
 
-// at these settings, characters 18 wide and 63 tall 
-static int char_w = 28;
-static int char_h = 47;
+static int char_w = 0;
+static int char_h = 0;
 
 static vector<string> input_buffer = { "" };
 static vector<string> input_history = {};
@@ -76,7 +75,14 @@ void setup()
   panel.setTextColor( TFT_BLACK, TFT_WHITE );
   panel.setTextScroll(true);
   panel.setCursor(0,0);
-  Serial.printf( "%d by %d\n", panel_width, panel_height );
+  panel.print( "PA" );
+  panel.print( "\W");
+  char_w = panel.getCursorX();
+  char_h = panel.getCursorY();
+  panel.print( "B\n");
+  Serial.println( "=== start ===" );
+  Serial.printf( "Screen %d by %d\n", panel_width, panel_height );
+  Serial.printf( "Char %d by %d\n", char_w, char_h );
   panel.pushSprite(margin,margin);
 }
 
@@ -124,7 +130,6 @@ void loop()
         }
       }
     } // while
-
     // ..........................................................................
     loop_index++;
   }
@@ -182,9 +187,9 @@ void HandleNewCharacter( char letter )
 {
   try
   {
-    Serial.printf( "new char '%c'\n", letter );
     if ( letter == 0x08 ) // backspace
     {
+      Serial.println( "backspace" );
       if( input_buffer.size() > 0 )
       {
         if( input_buffer.back().size() > 0 )
@@ -194,38 +199,53 @@ void HandleNewCharacter( char letter )
           MoveCursor(-1,0);
           PanelPrint( " " );
           MoveCursor(-1,0);
+          Serial.println( "Character removed" );
         }
         if( input_buffer.back().size() == 0 )
         {
+          Serial.println( "input buffer line is now empty" );
           // that row is empty now
           if( input_buffer.size() > 1 )
           {
             // Drop the drow
             input_buffer.pop_back();
+            Serial.println( "removing empty line" );
             MoveCursor( 0, -1 );
             int new_x = input_buffer.back().size() * char_w;
             panel.setCursor( new_x, panel.getCursorY() );
           }
+          else
+          {
+            Serial.println( "input buffer is now empty" );
+          }
         }
+      }
+      else
+      {
+        Serial.println( "input buffer already empty" );
       }
     }
     else if ( letter == 0x0D ) // enter key
     {
       // input_buffer.back() += "\n"; technically correct but not good ux
       input_buffer.push_back("");
+      Serial.println( "Added New Line" );
       PanelPrint( "\n" );
     }
     else if ( letter == 0xA3 ) // fn+enter
     {
-      PanelPrint("\nfn+enter\n");
+      Serial.println("fn+enter");
       string joined = pystring::join( "\n", input_buffer );
       Serial.printf( "input item saved: '%s'\n", joined.data() );
       input_history.push_back(joined);
       input_buffer.clear();
       input_buffer.push_back( "" );
+      PanelPrintLn(" <- ");
+      ReadCommand();
     }
     else if  ( letter >= 0x20 ) // characters
     {
+      Serial.printf( "new char '%c'\n", letter );
       input_buffer.back() += letter;
       PanelPrint( letter );
     }
@@ -256,9 +276,14 @@ void ReadCommand()
       }
       panel.pushSprite(margin,margin);
     }
+    else if ( command == "reset" )
+    {
+      PanelPrintLn("Restarting!");
+      ESP.restart();
+    }
     else
     {
-      PanelPrint( "\nwhat?" );
+      PanelPrintLn( "what?" );
     }
   }
 }
