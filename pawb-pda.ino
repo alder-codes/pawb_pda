@@ -15,6 +15,8 @@ static vector<string> input_history = {};
 static vector<string> app_menu = { "collect", "inbox", "notes", "reset" };
 static void (*NextAction)() = NULL;
 
+deque<string> inbox_contents = {};
+
 M5Canvas panel = M5Canvas( &M5.Display );
 
 
@@ -31,6 +33,9 @@ void setup()
     Nope();
   }
   Serial.println( "=== start ===" );
+  CheckDirectories();
+  vector<string> listing = ListDirectory( SD, "/inbox/" );
+  inbox_contents = deque(listing.begin(), listing.end());
   panel_width = 100;
   panel_height = 100;
   //Serial.printf( "panel is %d by %d \n", panel_width, panel_height );
@@ -51,10 +56,10 @@ void setup()
   Serial.printf( "panel_width(%d) and panel_height(%d)\n", panel_width, panel_height );
   panel.createSprite( panel_width, panel_height );
   panel.setFont( &fonts::FreeMonoBold18pt7b );
+  panel.setTextColor( TFT_BLACK, TFT_WHITE );
   panel.clear(TFT_WHITE);
   panel.setTextSize(1);
   panel.setTextWrap(true);
-  panel.setTextColor( TFT_BLACK, TFT_WHITE );
   panel.setTextScroll(true);
   panel.setCursor(0,0);
   panel.print( "PA" );
@@ -115,6 +120,32 @@ void loop()
     Serial.println( "\nexception in loop: " );
     Serial.println( ex.what() );
   }
+}
+
+void CheckDirectories()
+{
+  // Check if the key directories exist on the SD card and if they don't then create them
+  // inbox
+  // notes
+  vector<string> key_directories = { "inbox", "notes" };
+  for( int i = 0; i < key_directories.size(); i++ )
+  {
+    string dir = "/"+key_directories[i];
+    File root = SD.open( dir.data() );
+    if( !root || !root.isDirectory() )
+    {
+      // Directory doesn't exist so create it
+      if( SD.mkdir( dir.data() ) )
+      {
+        Serial.println( ("Created: " + dir).data() );
+      }
+      else
+      {
+        Serial.println( ("Failed to create: " + dir).data() );
+      }
+    }
+  }
+
 }
 
 void Nope()
@@ -275,10 +306,26 @@ void ReadCommand()
     }
     else if ( command == "inbox" )
     {
-      vector<string> inbox_contents = ListDirectory( SD, "/inbox/" );
       for( int i = 0; i < inbox_contents.size(); i++ )
       {
         PanelPrintLn( "- " + inbox_contents[i] );
+      }
+    }
+    else if ( command == "inbox next" )
+    {
+      if( inbox_contents.size() > 0 )
+      {
+        string path = "/inbox/" + inbox_contents.front();
+        string item = readFile( SD, path.data() );
+        PanelPrintLn( "opening: " + inbox_contents.front() );
+        PanelPrintLn( item );
+        PanelPrintLn( "(k)eep or (d)elete?" );
+        multiline = false;
+        NextAction = KeepOrDelete;
+      }
+      else
+      {
+        PanelPrintLn( "Inbox 0" );
       }
     }
     else if ( command == "reset" )
@@ -296,11 +343,64 @@ void ReadCommand()
 
 void SaveNewItem()
 {
-  PanelPrintLn("[saving to inbox]");
+  PanelPrintLn("[Save To Inbox]");
   NextAction = NULL;
   multiline = false;
 }
 
+void KeepOrDelete()
+{
+  string cmd = input_history.back();
+  if( cmd == "k" )
+  {
+    PanelPrintLn( "Moving item to notes." );
+    string file_name = inbox_contents.front();
+    string oldPath = "/inbox/" + file_name;
+    string newPath = "/notes/" + file_name;
+    if( renameFile( SD, oldPath.data(), newPath.data() ) )
+    {
+      inbox_contents.pop_front();
+      NextAction = NULL;
+      multiline = false;
+    }
+  }
+  else if ( cmd == "d" )
+  {
+    PanelPrintLn( "Deleting item." );
+    if( deleteFile( SD, ("/inbox/" + inbox_contents.front()).data() ) )
+    {
+      inbox_contents.pop_front();
+      NextAction = NULL;
+      multiline = false;
+    }
+  }
+  else
+  {
+    PanelPrintLn( "what?" );
+  }
+}
+
+bool deleteFile(fs::FS &fs, const char *path)
+{
+  if (fs.remove(path)) {
+    PanelPrintLn("Item deleted");
+    return true;
+  } else {
+    PanelPrintLn("Delete failed");
+    return false;
+  }
+}
+
+bool renameFile(fs::FS &fs, const char *path1, const char *path2)
+{
+  if (fs.rename(path1, path2)) {
+    PanelPrintLn("Item moved");
+    return true;
+  } else {
+    PanelPrintLn("Move failed");
+    return false;
+  }
+}
 
 vector<string> ListDirectory(fs::FS &fs, const char *dirname)
 {
@@ -329,6 +429,24 @@ vector<string> ListDirectory(fs::FS &fs, const char *dirname)
     file = root.openNextFile();
   }
   return listing;
+}
+
+string readFile(fs::FS &fs, const char *path)
+{
+  string buffer;
+  File file = fs.open(path);
+  if (!file)
+  {
+    Serial.println("Failed to open file for reading");
+    return "";
+  }
+  // this is one character at a time and it is
+  // coming in as the unicode number
+  while (file.available()) {
+    buffer += file.read();
+  }
+  file.close();
+  return buffer;
 }
 
 

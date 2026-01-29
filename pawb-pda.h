@@ -39,6 +39,7 @@ static const int CARDKB_ADDR = 0x5F;
 void setup();
 void loop();
 void Nope();
+void CheckDirectories();
 void PanelPrint( string str );
 void PanelPrint( char letter );
 void PanelPrintLn( string str );
@@ -48,7 +49,11 @@ void CursorHome();
 void HandleNewCharacter( char letter );
 void ReadCommand();
 void SaveNewItem();
+void KeepOrDelete();
+bool deleteFile(fs::FS &fs, const char *path);
+bool renameFile(fs::FS &fs, const char *path1, const char *path2);
 vector<string> ListDirectory(fs::FS &fs, const char *dirname);
+string readFile(fs::FS &fs, const char *path);
 
 
 #endif
