@@ -16,10 +16,23 @@ static vector<string> app_menu = { "collect", "inbox", "notes", "reset" };
 static void (*NextAction)() = NULL;
 
 deque<string> inbox_contents = {};
+deque<string> notes_contents = {};
 
 M5Canvas panel = M5Canvas( &M5.Display );
+static JsonDocument pawb_config;
+static PawbTime pawb_time = PawbTime();
 
 
+/*
+
+ ____  _____ _____ _   _ ____
+/ ___|| ____|_   _| | | |  _ \
+\___ \|  _|   | | | | | | |_) |
+ ___) | |___  | | | |_| |  __/
+|____/|_____| |_|  \___/|_|
+
+
+*/
 void setup()
 {
 
@@ -33,9 +46,18 @@ void setup()
     Nope();
   }
   Serial.println( "=== start ===" );
+  try
+  {
+    string json = readFile( SD, "/data/config.json" );
+    deserializeJson(pawb_config, json);
+  }
+  catch(const std::exception & ex)
+  {
+    Serial.println( "\nexception in loading config: " );
+    Serial.println( ex.what() );
+  }
   CheckDirectories();
-  vector<string> listing = ListDirectory( SD, "/inbox/" );
-  inbox_contents = deque(listing.begin(), listing.end());
+  IndexFiles();
   panel_width = 100;
   panel_height = 100;
   //Serial.printf( "panel is %d by %d \n", panel_width, panel_height );
@@ -62,12 +84,31 @@ void setup()
   panel.setTextWrap(true);
   panel.setTextScroll(true);
   panel.setCursor(0,0);
-  panel.print( "PA" );
-  panel.print( "\nWB\n" );
+  panel.print( "---------\n" );
+  panel.print( "|P|A|W|B|\n" );
+  panel.print( "---------\n" );
+  pawb_time.GetTime();
+  if( pawb_time.IsValid() )
+  {
+    PanelPrintLn( pawb_time.HumanDT(true) );
+  }
+  else
+  {
+    PanelPrintLn( "running 'time sync' is recommended" );
+  }
   panel.pushSprite(char_w,char_h);
   Serial.println( "=== loop ===" );
 }
 
+/*
+
+ _     ___   ___  ____
+| |   / _ \ / _ \|  _ \
+| |  | | | | | | | |_) |
+| |__| |_| | |_| |  __/
+|_____\___/ \___/|_|
+
+*/
 void loop()
 {
   M5.update();
@@ -122,73 +163,12 @@ void loop()
   }
 }
 
-void CheckDirectories()
-{
-  // Check if the key directories exist on the SD card and if they don't then create them
-  // inbox
-  // notes
-  vector<string> key_directories = { "inbox", "notes" };
-  for( int i = 0; i < key_directories.size(); i++ )
-  {
-    string dir = "/"+key_directories[i];
-    File root = SD.open( dir.data() );
-    if( !root || !root.isDirectory() )
-    {
-      // Directory doesn't exist so create it
-      if( SD.mkdir( dir.data() ) )
-      {
-        Serial.println( ("Created: " + dir).data() );
-      }
-      else
-      {
-        Serial.println( ("Failed to create: " + dir).data() );
-      }
-    }
-  }
 
-}
+
 
 void Nope()
 {
   sleep( 60 * 60 * 60 * 24 );
-}
-
-void PanelPrint( string str )
-{
-  panel.print( str.data() );
-  panel.pushSprite(char_w,char_h);
-}
-
-void PanelPrint( char letter )
-{
-  panel.print( letter );
-  panel.pushSprite(char_w,char_h);
-}
-
-void PanelPrintLn( string str )
-{
-  panel.print( str.data() );
-  panel.print( "\n" );
-  panel.pushSprite(char_w,char_h);
-}
-
-void PanelPrintLn( char letter )
-{
-  panel.print( letter );
-  panel.print( "\n" );
-  panel.pushSprite(char_w,char_h);
-}
-
-// In incriments of char_w and char_h
-void MoveCursor( int dx, int dy )
-{
-  panel.setCursor( panel.getCursorX() + (dx*char_w), panel.getCursorY() + (dy*char_h) );
-}
-
-void CursorHome()
-{
-  // say line/y, but at start
-  panel.setCursor( char_w, panel.getCursorY() );
 }
 
 void HandleNewCharacter( char letter )
@@ -306,9 +286,16 @@ void ReadCommand()
     }
     else if ( command == "inbox" )
     {
-      for( int i = 0; i < inbox_contents.size(); i++ )
+      if( inbox_contents.size() > 0 )
       {
-        PanelPrintLn( "- " + inbox_contents[i] );
+        for( int i = 0; i < inbox_contents.size(); i++ )
+        {
+          PanelPrintLn( "- " + inbox_contents[i] );
+        }
+      }
+      else
+      {
+        PanelPrintLn( "Inbox 0" );
       }
     }
     else if ( command == "inbox next" )
@@ -328,6 +315,28 @@ void ReadCommand()
         PanelPrintLn( "Inbox 0" );
       }
     }
+    else if ( command == "notes" )
+    {
+      if( notes_contents.size() > 0 )
+      {
+        for( int i = 0; i < notes_contents.size(); i++ )
+        {
+          PanelPrintLn( "- " + notes_contents[i] );
+        }
+      }
+      else
+      {
+        PanelPrintLn( "No notes" );
+      }
+    }
+    else if ( command == "time sync" )
+    {
+      if( !pawb_time.IsValid() )
+      {
+        PanelPrintLn("Clock is out of sync.");
+        pawb_time.SyncTime();
+      }
+    }
     else if ( command == "reset" )
     {
       PanelPrintLn("Restarting!");
@@ -340,13 +349,32 @@ void ReadCommand()
   }
 }
 
-
 void SaveNewItem()
 {
-  PanelPrintLn("[Save To Inbox]");
-  NextAction = NULL;
-  multiline = false;
+  pawb_time.GetTime(); // Update the clock
+  string file_name = pawb_time.YYYYMMDD() + "-" + pawb_time.HHMMSS() + ".txt"; // DATE
+  string file_path = "/inbox/" + file_name;
+  string file_contents = input_history.back();
+  if( writeFile( SD, file_path, file_contents ) )
+  {
+    if( fileExists( SD, file_path ) )
+    {
+      PanelPrintLn( "New item file saved." );
+      IndexFiles();
+      NextAction = NULL;
+      multiline = false;
+    }
+    else
+    {
+      PanelPrintLn( "Failed: confirm new file." );
+    }
+  }
+  else
+  {
+    PanelPrintLn( "Failed: save new file." );
+  }
 }
+
 
 void KeepOrDelete()
 {
@@ -380,12 +408,73 @@ void KeepOrDelete()
   }
 }
 
+/*
+
+ _____ _ _        ___    _____
+|  ___(_) | ___  |_ _|  / / _ \
+| |_  | | |/ _ \  | |  / / | | |
+|  _| | | |  __/  | | / /| |_| |
+|_|   |_|_|\___| |___/_/  \___/
+
+*/
+
+/* ================== File IO ================== */
+
+void IndexFiles()
+{
+  vector<string> listing = ListDirectory( SD, "/inbox/" );
+  inbox_contents = deque(listing.begin(), listing.end());
+
+  listing = ListDirectory( SD, "/notes/" );
+  notes_contents = deque(listing.begin(), listing.end());
+}
+
+void CheckDirectories()
+{
+  // Check if the key directories exist on the SD card and if they don't then create them
+  // inbox
+  // notes
+  vector<string> key_directories = { "inbox", "notes" };
+  for( int i = 0; i < key_directories.size(); i++ )
+  {
+    string dir = "/"+key_directories[i];
+    File root = SD.open( dir.data() );
+    if( !root || !root.isDirectory() )
+    {
+      // Directory doesn't exist so create it
+      if( SD.mkdir( dir.data() ) )
+      {
+        Serial.println( ("Created: " + dir).data() );
+      }
+      else
+      {
+        Serial.println( ("Failed to create: " + dir).data() );
+      }
+    }
+  }
+
+}
+
+
+bool fileExists(fs::FS &fs, string path)
+{
+  return fs.exists( path.data() );
+}
+
+bool fileExists(fs::FS &fs, const char *path)
+{
+  return fs.exists( path );
+}
+
 bool deleteFile(fs::FS &fs, const char *path)
 {
-  if (fs.remove(path)) {
+  if (fs.remove(path))
+  {
     PanelPrintLn("Item deleted");
     return true;
-  } else {
+  } 
+  else
+  {
     PanelPrintLn("Delete failed");
     return false;
   }
@@ -393,13 +482,11 @@ bool deleteFile(fs::FS &fs, const char *path)
 
 bool renameFile(fs::FS &fs, const char *path1, const char *path2)
 {
-  if (fs.rename(path1, path2)) {
-    PanelPrintLn("Item moved");
-    return true;
-  } else {
-    PanelPrintLn("Move failed");
-    return false;
-  }
+  Serial.print( "Copying " );
+  Serial.println( path1 );
+  Serial.print( "to " );
+  Serial.println( path2 );
+  return fs.rename(path1, path2);
 }
 
 vector<string> ListDirectory(fs::FS &fs, const char *dirname)
@@ -448,5 +535,431 @@ string readFile(fs::FS &fs, const char *path)
   file.close();
   return buffer;
 }
+
+bool writeFile(fs::FS &fs, string path, string message)
+{
+  //printf_log("Writing file: %s\n", path);
+
+  File file = fs.open(path.data(), FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to open file for writing");
+    return false;
+  }
+  if (file.print(message.data())) {
+    Serial.println("File written");
+  } else {
+    Serial.println("Write failed");
+    return false;
+  }
+  file.close();
+  return true;
+}
+
+bool writeFile(fs::FS &fs, const char *path, const char *message)
+{
+  File file = fs.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to open file for writing");
+    return false;
+  }
+  if (file.print(message)) {
+    Serial.println("File written");
+  } else {
+    Serial.println("Write failed");
+    return false;
+  }
+  file.close();
+  return true;
+}
+
+
+/*
+
+ ____  _           _                ____                 _     _
+|  _ \(_)___ _ __ | | __ _ _   _   / ___|_ __ __ _ _ __ | |__ (_) ___ ___
+| | | | / __| '_ \| |/ _` | | | | | |  _| '__/ _` | '_ \| '_ \| |/ __/ __|
+| |_| | \__ \ |_) | | (_| | |_| | | |_| | | | (_| | |_) | | | | | (__\__ \
+|____/|_|___/ .__/|_|\__,_|\__, |  \____|_|  \__,_| .__/|_| |_|_|\___|___/
+            |_|            |___/                  |_|
+
+*/
+
+/* ================== Graphic Output ================== */
+
+void PanelPrint( string str )
+{
+  panel.print( str.data() );
+  panel.pushSprite(char_w,char_h);
+}
+
+void PanelPrint( char letter )
+{
+  panel.print( letter );
+  panel.pushSprite(char_w,char_h);
+}
+
+void PanelPrintLn( string str )
+{
+  panel.print( str.data() );
+  panel.print( "\n" );
+  panel.pushSprite(char_w,char_h);
+}
+
+void PanelPrintLn( char letter )
+{
+  panel.print( letter );
+  panel.print( "\n" );
+  panel.pushSprite(char_w,char_h);
+}
+
+// In incriments of char_w and char_h
+void MoveCursor( int dx, int dy )
+{
+  panel.setCursor( panel.getCursorX() + (dx*char_w), panel.getCursorY() + (dy*char_h) );
+}
+
+void CursorHome()
+{
+  // say line/y, but at start
+  panel.setCursor( char_w, panel.getCursorY() );
+}
+
+
+
+/* ================== Peripheral and Sensors ================== */
+
+bool WifiConnect()
+{
+  try
+  {
+    time_t start = time(nullptr);  
+    std::string wifi_ssid =  pawb_config["Wifi_SSID"].as<std::string>();
+    std::string wifi_pass =  pawb_config["Wifi_Pass"].as<std::string>();
+    Serial.println( ("Attemptintg to connect to "+wifi_ssid+" with "+wifi_pass).data() );
+    WiFi.begin( wifi_ssid.data(), wifi_pass.data() );
+    Serial.print( "Wifi " );
+    while (WiFi.status() != WL_CONNECTED)
+    {
+      delay(2000);
+      if( time(nullptr) - start > 180000 )
+      {
+        Serial.print("\n");
+        return false;
+      }
+      Serial.print(".");
+    }
+    Serial.print("\n");
+    PanelPrintLn("Wifi Connected");
+    return true;
+  }
+  catch(const std::exception & ex)
+  {
+    Serial.println( "\nexception in Wifi Connect: " );
+    Serial.println( ex.what() );
+  }
+}
+
+void WifiOff()
+{
+  try
+  {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    PanelPrintLn("Wifi Off");
+  }
+  catch(const std::exception & ex)
+  {
+    Serial.println( "\nexception in WifiOff: " );
+    Serial.println( ex.what() );
+  }
+}
+
+
+/*
+
+ _____ _                  ____  _           _
+|_   _(_)_ __ ___   ___  |  _ \(_)___ _ __ | | __ _ _   _
+  | | | | '_ ` _ \ / _ \ | | | | / __| '_ \| |/ _` | | | |
+  | | | | | | | | |  __/ | |_| | \__ \ |_) | | (_| | |_| |
+  |_| |_|_| |_| |_|\___| |____/|_|___/ .__/|_|\__,_|\__, |
+                                     |_|            |___/
+
+*/
+
+/* ================== Time Output ================== */
+
+
+PawbTime::PawbTime()
+{
+  this->GetTime();
+}
+
+void PawbTime::GetTime()
+{
+  time(&this->now);
+  localtime_r(&this->now,&this->tm);
+}
+
+string PawbTime::YYYYMMDD()
+{
+  string output = "";
+  output += to_string( this->tm.tm_year + 1900 );
+  output += this->u10( this->tm.tm_mon + 1 );
+  output += this->u10( this->tm.tm_mday );
+  return output;
+}
+
+string PawbTime::HHMMSS()
+{
+  string output = "";
+  int offset = pawb_config["UTC"].as<int>();
+  int hour12 = (int) this->tm.tm_hour + offset;
+  if( this->tm.tm_hour )
+  {
+    hour12 -= 12;
+  }
+  output += this->u10( hour12 );
+  output += this->u10( this->tm.tm_min );
+  output += this->u10( this->tm.tm_sec );
+  return output;
+}
+
+
+string PawbTime::HumanDT( bool abbreviated )
+{
+  vector<int> now = {};
+  now.push_back( (int) this->tm.tm_year + 1900 ); // 0
+  now.push_back( (int) this->tm.tm_mon );         // 1
+  now.push_back( (int) this->tm.tm_mday );        // 2
+  now.push_back( (int) this->tm.tm_wday );        // 3
+  now.push_back( (int) this->tm.tm_hour );        // 4
+  now.push_back( (int) this->tm.tm_min );         // 5
+  now.push_back( (int) this->tm.tm_sec );         // 6
+  string ampm = "AM";
+
+  int offset = pawb_config["UTC"].as<int>();
+  now[4] += offset;
+  
+  if( now[4] > 12 )
+  {
+    now[4] -= 12;
+    ampm = "PM";
+  }
+
+  string output = "";
+  output += this->DayOfWeek( this->tm.tm_wday, abbreviated) +  " ";
+  output += this->MonthName( this->tm.tm_mon, abbreviated );
+  output += " " + this->u10(now[2]) + " ";
+  output += this->u10(now[4]) + ":";
+  output += this->u10(now[5]);
+  output += ampm;
+  
+  /*
+  string year = to_string(  );
+  string month = this->MonthName( this->tm.tm_mon,  abbreviated );
+  string wkday = this->DayOfWeek( this->tm.tm_wday, abbreviated );
+  string day = this->u10( this->tm.tm_mday );
+  string hour = this->u10( this->tm.tm_hour );
+  string minutes = this->u10( this->tm.tm_min );
+  string ampm = "AM";
+  if( this->tm.tm_hour > 12 )
+  {
+    hour = this->u10( this->tm.tm_hour - 12 );
+    ampm = "PM";
+  }
+  string output = wkday + ", " + month + " " + day + + ", ";
+  if( !abbreviated )
+  {
+    output += year;
+  }
+  output = " @ " + hour + ":" + minutes + " " + ampm;
+  */
+  return output;
+}
+
+string PawbTime::DayOfWeek( int index, bool abbreviated )
+{
+  vector<string> names =   {
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+  };
+  string output = names[index];
+  if( abbreviated )
+  {
+    return output.substr(0,3);
+  }
+  return output;
+}
+
+string PawbTime::MonthName( int index, bool abbreviated )
+{
+  vector<string> names =   {
+    "January", "February", "March", "April", "May", "June", 
+    "July", "August", "September", "October", "November", "December"
+  };
+  string output = names[index];
+  if( abbreviated )
+  {
+    return output.substr(0,3);
+  }
+  return output;
+}
+
+string PawbTime::u10( int number )
+{
+  string output = to_string(number);
+  if( number < 10 )
+  {
+    output = "0" + output;
+  }
+  return output;
+}
+
+bool PawbTime::IsValid()
+{
+  bool valid_time = true;
+  if( (this->tm.tm_year+1900) < 2025 )
+  {
+    Serial.println( "Year less than 2025" );
+    return false;
+  }
+  if( this->tm.tm_mon < 0 || this->tm.tm_mon > 11 )
+  {
+    Serial.printf( "Month out of range: %d \n", (int) this->tm.tm_mon );
+    return false;
+  }
+  return valid_time;
+}
+
+
+//-----------------------------------------------------------------------------
+void PawbTime::SyncTime()
+{
+  try
+  {
+    Serial.println( "Syncing time. Please wait." );
+    bool op_success = false;
+    const std::vector<std::string> servers = { "0.pool.ntp.org", "1.pool.ntp.org", "2.pool.ntp.org" };
+    if( WifiConnect() )
+    {
+      const std::string timezone = pawb_config["TZ"].as<std::string>();
+      configTzTime( timezone.data(), servers[0].data(), servers[1].data(), servers[2].data());
+      if( this->SntpConnect() )
+      {
+        if( this->SyncRtc() )
+        {
+          op_success = true;
+        }
+        else 
+        {
+          Serial.println( "SyncRTC failed." );
+        }
+      }
+      else
+      {
+        Serial.println( "SNTP Connect Failed" );
+      }
+    }
+    else
+    {
+      Serial.println( "Wifi connect failed." );
+    }
+    if( op_success )
+    {
+      Serial.println( "Sync time successful." );
+    }
+    else
+    {
+      Serial.println( "Sync time failed." );
+    }
+    WifiOff();
+  }
+  catch(const std::exception & ex)
+  {
+    Serial.println( "\nexception in Wifi Connect: " );
+    Serial.println( ex.what() );
+  }
+}
+
+
+bool PawbTime::SntpConnect()
+{
+  try
+  {
+    bool success = true;
+    time_t start = time(nullptr);  
+    #if SNTP_ENABLED
+    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED)
+    {
+      delay(500);
+      int diff = (int) time(nullptr) - (int) start;
+      if( diff > 180000 )
+      {
+        Serial.println( "SntpConnect() timed out (a)" );
+        Serial.printf( "Diff: %d\n", diff );
+        return false;
+      }
+    }
+    #else
+    delay(1600);
+    struct tm timeInfo;
+    while (!getLocalTime(&timeInfo, 1000))
+    {
+      delay(500);
+      if( time(nullptr) - start > 180000 )
+      {
+        Serial.println( "SntpConnect() timed out (b)" );
+        Serial.printf( "%d / %d \n", (int) time(nullptr) - start, 180000 );
+        return false;
+      }
+    };
+    #endif
+    return true;
+  }
+  catch(const std::exception & ex)
+  {
+    Serial.println( "\nexception in SNTP Connected: " );
+    Serial.println( ex.what() );
+  }
+}
+
+
+
+bool PawbTime::SyncRtc()
+{
+  try
+  {
+    time_t start = time(nullptr);  
+    time_t t = time(nullptr) + 1;  // Advance one second.
+    while (t > time(nullptr))
+        ;  /// Synchronization in seconds
+    M5.Rtc.setDateTime(gmtime(&t));
+    bool confirmed = false;
+    while( !confirmed )
+    {
+      delay(500);
+      if( time(nullptr) - start > 180000 )
+      {
+        Serial.println( "SyncRTC timedout.");
+        return false;
+      }
+      this->GetTime(); // update
+      if( this->IsValid() ) // is it valid yet?
+      {
+        Serial.println( "Update: time confirmed valid.");
+        confirmed = true;
+        return true;
+      }
+    }
+    return true;
+  }
+  catch(const std::exception & ex)
+  {
+    Serial.println( "\nexception in SyncRTC: " );
+    Serial.println( ex.what() );
+  }
+}
+
+
+
 
 
