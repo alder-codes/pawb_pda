@@ -2,26 +2,33 @@
 
 using namespace std;
 
-static int loop_index = 0;
-
 static int panel_width = 0;
 static int panel_height = 0;
 
 static int char_w = 0;
 static int char_h = 0;
 static bool multiline = false;
+static bool input_on = false; // use this to denote a time not to iterrupt user
 static vector<string> input_buffer = { "" };
 static vector<string> input_history = {};
-static vector<string> app_menu = { "collect", "inbox", "notes", "reset" };
+
+static vector<string> app_menu = { "menu", "collect", "status", "inbox  ", "inbox next", "notes", "battery", "time sync ", "reset" };
+
 static void (*NextAction)() = NULL;
 
 deque<string> inbox_contents = {};
 deque<string> notes_contents = {};
 
+deque<int> battery_readings = {};
+
+auto AppFont = &fonts::FreeMonoBold18pt7b;
+
 M5Canvas panel = M5Canvas( &M5.Display );
+M5Canvas statusbar = M5Canvas( &M5.Display );
 static JsonDocument pawb_config;
 static PawbTime pawb_time = PawbTime();
 
+time_t tick;
 
 /*
 
@@ -61,43 +68,54 @@ void setup()
   panel_width = 100;
   panel_height = 100;
   //Serial.printf( "panel is %d by %d \n", panel_width, panel_height );
+
+  // M5.Display
   M5.Display.setRotation( 0 );
   M5.Display.setEpdMode( epd_mode_t::epd_fastest );
+
+  // Test Sprite to Measure Font Size
   panel.createSprite(panel_width,panel_height);
-  panel.setFont( &fonts::FreeMonoBold18pt7b );
+  panel.setFont( AppFont );
   panel.setCursor(0,0);
   panel.print( "PA" );
   panel.print( "\nW");
   char_w = panel.getCursorX();
   char_h = panel.getCursorY();
   Serial.printf( "char_w(%d) and char_h(%d)\n", char_w, char_h );
-  panel.print( "B\n");
   panel.deleteSprite();
+
+  // Ok now make the actual display panel
   panel_width = char_w * (floor( (double) M5.Display.width() / char_w ) - 2);
   panel_height = char_h * ( floor( (double) M5.Display.height() / char_h ) - 2 );
+  panel_height -= char_h;
   Serial.printf( "panel_width(%d) and panel_height(%d)\n", panel_width, panel_height );
   panel.createSprite( panel_width, panel_height );
-  panel.setFont( &fonts::FreeMonoBold18pt7b );
+  panel.setFont( AppFont );
   panel.setTextColor( TFT_BLACK, TFT_WHITE );
   panel.clear(TFT_WHITE);
   panel.setTextSize(1);
   panel.setTextWrap(true);
   panel.setTextScroll(true);
   panel.setCursor(0,0);
+
+  // Status Bar
+  statusbar.createSprite( M5.Display.width(), char_h*2 );
+  statusbar.setFont( &fonts::FreeMonoBold18pt7b );
+  statusbar.setTextColor( TFT_WHITE, TFT_BLACK );
+  statusbar.clear(TFT_BLACK);
+  statusbar.setTextSize(1);
+  statusbar.setCursor(0,0);
+
+  // Print the Greeting
   panel.print( "---------\n" );
   panel.print( "|P|A|W|B|\n" );
   panel.print( "---------\n" );
-  pawb_time.GetTime();
-  if( pawb_time.IsValid() )
-  {
-    PanelPrintLn( pawb_time.HumanDT(true) );
-  }
-  else
-  {
-    PanelPrintLn( "running 'time sync' is recommended" );
-  }
   panel.pushSprite(char_w,char_h);
+
+  pawb_time.GetTime();
+  DrawStatusBar();
   Serial.println( "=== loop ===" );
+  tick = time(nullptr);
 }
 
 /*
@@ -154,7 +172,12 @@ void loop()
       }
     } // while
     // ..........................................................................
-    loop_index++;
+    if( time(nullptr) - tick == 60 )
+    {
+      TakeBatteryReading();
+      DrawStatusBar();
+      tick = time(nullptr);
+    }
   }
   catch(const std::exception & ex)
   {
@@ -163,8 +186,29 @@ void loop()
   }
 }
 
+void TakeBatteryReading()
+{
+  battery_readings.push_front( (int) M5.Power.getBatteryLevel() );
+  if( battery_readings.size() > 10 )
+  {
+    battery_readings.pop_back();
+  }
+}
 
-
+double GetBatteryAverage()
+{
+  int result = -1;
+  if( battery_readings.size() > 0 )
+  {
+    result++;
+    for( int reading : battery_readings)
+    {
+      result += reading;
+    }
+    result = (double) result / (double) battery_readings.size();
+  }
+  return result;
+}
 
 void Nope()
 {
@@ -264,6 +308,14 @@ void HandleNewCharacter( char letter )
   }
 }
 
+/*
+  ____ ___  __  __ __  __    _    _   _ ____  ____
+ / ___/ _ \|  \/  |  \/  |  / \  | \ | |  _ \/ ___|
+| |  | | | | |\/| | |\/| | / _ \ |  \| | | | \___ \
+| |__| |_| | |  | | |  | |/ ___ \| |\  | |_| |___) |
+ \____\___/|_|  |_|_|  |_/_/   \_\_| \_|____/|____/
+
+*/
 void ReadCommand()
 {
   if( input_history.size() > 0 )
@@ -281,8 +333,19 @@ void ReadCommand()
     else if ( command == "collect" )
     {
       PanelPrintLn("input: ");
+      input_on = true;
       multiline = true;
       NextAction = SaveNewItem;
+    }
+    else if ( command == "status" )
+    {
+      PanelPrintLn("Status Report: ");
+      string line = "Inbox (" + to_string( inbox_contents.size() ) + ")";
+      PanelPrintLn(line);
+      line = "Notes (" + to_string( notes_contents.size() ) + ")";
+      PanelPrintLn(line);
+      line = "Battery (" + to_string(GetBatteryAverage()) + "%)";
+      PanelPrintLn(line);
     }
     else if ( command == "inbox" )
     {
@@ -307,8 +370,7 @@ void ReadCommand()
         PanelPrintLn( "opening: " + inbox_contents.front() );
         PanelPrintLn( item );
         PanelPrintLn( "(k)eep or (d)elete?" );
-        multiline = false;
-        NextAction = KeepOrDelete;
+        NextAction = InboxKeepOrDelete;
       }
       else
       {
@@ -329,6 +391,10 @@ void ReadCommand()
         PanelPrintLn( "No notes" );
       }
     }
+    else if ( command == "battery" )
+    {
+      PanelPrintLn( "Battery: " + to_string(GetBatteryAverage()) + "%" );
+    }
     else if ( command == "time sync" )
     {
       if( !pawb_time.IsValid() )
@@ -336,6 +402,12 @@ void ReadCommand()
         PanelPrintLn("Clock is out of sync.");
         pawb_time.SyncTime();
       }
+    }
+    else if ( command == "calendar" )
+    {
+      // Defaults to this month
+      //int year = 
+      NextAction = CalendarControls;
     }
     else if ( command == "reset" )
     {
@@ -363,6 +435,7 @@ void SaveNewItem()
       IndexFiles();
       NextAction = NULL;
       multiline = false;
+      input_on = false;
     }
     else
     {
@@ -373,10 +446,10 @@ void SaveNewItem()
   {
     PanelPrintLn( "Failed: save new file." );
   }
+  IndexFiles();
 }
 
-
-void KeepOrDelete()
+void InboxKeepOrDelete()
 {
   string cmd = input_history.back();
   if( cmd == "k" )
@@ -406,7 +479,14 @@ void KeepOrDelete()
   {
     PanelPrintLn( "what?" );
   }
+  IndexFiles();
 }
+
+void CalendarControls()
+{
+
+}
+
 
 /*
 
@@ -625,6 +705,12 @@ void CursorHome()
 }
 
 
+void DrawStatusBar()
+{
+  statusbar.drawCenterString( pawb_time.HumanDT(true).data(), M5.Display.width()/2 , char_h * 0.6);
+  statusbar.pushSprite( 0, M5.Display.height() - (char_h*2) );
+}
+
 
 /* ================== Peripheral and Sensors ================== */
 
@@ -724,6 +810,15 @@ string PawbTime::HHMMSS()
   return output;
 }
 
+int PawbTime::GetYear()
+{
+  return (int) this->tm.tm_year + 1900 ;
+}
+
+int PawbTime::GetMonth()
+{
+  return (int) this->tm.tm_mon + 1;
+}
 
 string PawbTime::HumanDT( bool abbreviated )
 {
@@ -753,27 +848,6 @@ string PawbTime::HumanDT( bool abbreviated )
   output += this->u10(now[4]) + ":";
   output += this->u10(now[5]);
   output += ampm;
-  
-  /*
-  string year = to_string(  );
-  string month = this->MonthName( this->tm.tm_mon,  abbreviated );
-  string wkday = this->DayOfWeek( this->tm.tm_wday, abbreviated );
-  string day = this->u10( this->tm.tm_mday );
-  string hour = this->u10( this->tm.tm_hour );
-  string minutes = this->u10( this->tm.tm_min );
-  string ampm = "AM";
-  if( this->tm.tm_hour > 12 )
-  {
-    hour = this->u10( this->tm.tm_hour - 12 );
-    ampm = "PM";
-  }
-  string output = wkday + ", " + month + " " + day + + ", ";
-  if( !abbreviated )
-  {
-    output += year;
-  }
-  output = " @ " + hour + ":" + minutes + " " + ampm;
-  */
   return output;
 }
 

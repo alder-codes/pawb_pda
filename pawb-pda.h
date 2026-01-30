@@ -46,8 +46,8 @@ void Nope();
 void HandleNewCharacter( char letter );
 void ReadCommand();
 void SaveNewItem();
-void KeepOrDelete();
-
+void InboxKeepOrDelete();
+void CalendarControls();
 
 void PanelPrint( string str );
 void PanelPrint( char letter );
@@ -65,7 +65,8 @@ vector<string> ListDirectory(fs::FS &fs, const char *dirname);
 string readFile(fs::FS &fs, const char *path);
 
 
-
+void TakeBatteryReading();
+double GetBatteryAverage();
 
 
 
@@ -81,6 +82,8 @@ class PawbTime
     string HumanDT( bool abbreviated );
     bool IsValid();
     void SyncTime();
+    int GetYear();
+    int GetMonth();
   private:
     string DayOfWeek( int index, bool abbreviated );
     string MonthName( int index, bool abbreviated );
