@@ -116,6 +116,8 @@ void setup()
   DrawStatusBar();
   Serial.println( "=== loop ===" );
   tick = time(nullptr);
+
+  PrintStatusReport();
 }
 
 /*
@@ -172,19 +174,21 @@ void loop()
       }
     } // while
     // ..........................................................................
-    if( time(nullptr) - tick == 60 )
+    if( time(nullptr) - tick == 30 )
     {
+      pawb_time.GetTime();
       TakeBatteryReading();
       DrawStatusBar();
       tick = time(nullptr);
     }
+    
   }
   catch(const std::exception & ex)
   {
     Serial.println( "\nexception in loop: " );
     Serial.println( ex.what() );
   }
-}
+} // End of loop()
 
 void TakeBatteryReading()
 {
@@ -339,13 +343,7 @@ void ReadCommand()
     }
     else if ( command == "status" )
     {
-      PanelPrintLn("Status Report: ");
-      string line = "Inbox (" + to_string( inbox_contents.size() ) + ")";
-      PanelPrintLn(line);
-      line = "Notes (" + to_string( notes_contents.size() ) + ")";
-      PanelPrintLn(line);
-      line = "Battery (" + to_string(GetBatteryAverage()) + "%)";
-      PanelPrintLn(line);
+      PrintStatusReport();
     }
     else if ( command == "inbox" )
     {
@@ -419,6 +417,17 @@ void ReadCommand()
       PanelPrintLn( "what?" );
     }
   }
+}
+
+void PrintStatusReport()
+{
+  PanelPrintLn("Status Report: ");
+  string line = "Inbox (" + to_string( inbox_contents.size() ) + ")";
+  PanelPrintLn(line);
+  line = "Notes (" + to_string( notes_contents.size() ) + ")";
+  PanelPrintLn(line);
+  line = "Battery (" + to_string((int)GetBatteryAverage()) + "%)";
+  PanelPrintLn(line);
 }
 
 void SaveNewItem()
@@ -707,7 +716,10 @@ void CursorHome()
 
 void DrawStatusBar()
 {
-  statusbar.drawCenterString( pawb_time.HumanDT(true).data(), M5.Display.width()/2 , char_h * 0.6);
+  string humandt = pawb_time.HumanDT(true);
+  Serial.print( "Tick... " );
+  Serial.println( humandt.data() );
+  statusbar.drawCenterString( humandt.data(), M5.Display.width()/2 , char_h * 0.6);
   statusbar.pushSprite( 0, M5.Display.height() - (char_h*2) );
 }
 
@@ -734,7 +746,7 @@ bool WifiConnect()
       }
       Serial.print(".");
     }
-    Serial.print("\n");
+    Serial.print(" connected");
     PanelPrintLn("Wifi Connected");
     return true;
   }
@@ -965,13 +977,6 @@ bool PawbTime::SntpConnect()
     while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED)
     {
       delay(500);
-      int diff = (int) time(nullptr) - (int) start;
-      if( diff > 180000 )
-      {
-        Serial.println( "SntpConnect() timed out (a)" );
-        Serial.printf( "Diff: %d\n", diff );
-        return false;
-      }
     }
     #else
     delay(1600);
@@ -979,14 +984,9 @@ bool PawbTime::SntpConnect()
     while (!getLocalTime(&timeInfo, 1000))
     {
       delay(500);
-      if( time(nullptr) - start > 180000 )
-      {
-        Serial.println( "SntpConnect() timed out (b)" );
-        Serial.printf( "%d / %d \n", (int) time(nullptr) - start, 180000 );
-        return false;
-      }
     };
     #endif
+    Serial.printf( "\nSNTP Time: \n", time(nullptr)-start );
     return true;
   }
   catch(const std::exception & ex)

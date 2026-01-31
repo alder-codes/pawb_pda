@@ -24,7 +24,6 @@
 #include <sntp.h>
 #define SNTP_ENABLED 1
 #endif
-
 #ifndef SNTP_ENABLED
 #define SNTP_ENABLED 0
 #endif
@@ -43,17 +42,17 @@ void Nope();
 
 
 
-void HandleNewCharacter( char letter );
+void HandleNewCharacter(char letter);
 void ReadCommand();
 void SaveNewItem();
 void InboxKeepOrDelete();
 void CalendarControls();
 
-void PanelPrint( string str );
-void PanelPrint( char letter );
-void PanelPrintLn( string str );
-void PanelPrintLn( char letter );
-void MoveCursor( int dx, int dy );
+void PanelPrint(string str);
+void PanelPrint(char letter);
+void PanelPrintLn(string str);
+void PanelPrintLn(char letter);
+void MoveCursor(int dx, int dy);
 void CursorHome();
 
 
@@ -72,27 +71,26 @@ double GetBatteryAverage();
 
 
 
-class PawbTime
-{
-  public:
-    PawbTime();
-    void GetTime();
-    string YYYYMMDD();
-    string HHMMSS();
-    string HumanDT( bool abbreviated );
-    bool IsValid();
-    void SyncTime();
-    int GetYear();
-    int GetMonth();
-  private:
-    string DayOfWeek( int index, bool abbreviated );
-    string MonthName( int index, bool abbreviated );
-    string u10( int number );
-    bool SntpConnect();
-    bool SyncRtc();
+class PawbTime {
+public:
+  PawbTime();
+  void GetTime();
+  string YYYYMMDD();
+  string HHMMSS();
+  string HumanDT(bool abbreviated);
+  bool IsValid();
+  void SyncTime();
+  int GetYear();
+  int GetMonth();
+private:
+  string DayOfWeek(int index, bool abbreviated);
+  string MonthName(int index, bool abbreviated);
+  string u10(int number);
+  bool SntpConnect();
+  bool SyncRtc();
 
-    time_t now;
-    tm tm;
+  time_t now;
+  tm tm;
 };
 
 
