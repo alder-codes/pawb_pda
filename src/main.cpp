@@ -1,12 +1,12 @@
-#define PLATFORM_LINUX
-//#define PLATFORM_ESP32
+//#define PLATFORM_LINUX
+#define PLATFORM_ESP32
 
 #ifdef PLATFORM_LINUX
-#include "../linux/Hardware_Linux.h"
+#include "../lib/Hardware_Linux/Hardware_Linux.h"
 #endif
 
 #ifdef PLATFORM_ESP32
-#include "Hardware_ESP32.h"
+#include <Hardware_ESP32.h>
 #endif
 
 

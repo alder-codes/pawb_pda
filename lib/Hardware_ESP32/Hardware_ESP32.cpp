@@ -1,8 +1,7 @@
-#include "Hardware_ESP32.h"
 #include "tDeckPro.h"
+#include "Hardware_ESP32.h"
 #include "GxEPD2_BW.h"
 #include "JetBrainsMono_Bold8pt7b.h"
-
 #include <string>
 
 using namespace std;
