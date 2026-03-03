@@ -1,11 +1,12 @@
-//
-// Created by Alice Rhodes on 3/3/26.
-//
-
 #include "Hardware_ESP32.h"
 #include "tDeckPro.h"
 #include "GxEPD2_BW.h"
 #include "JetBrainsMono_Bold8pt7b.h"
+
+#include <string>
+
+using namespace std;
+
 
 static GxEPD2_BW<GxEPD2_310_GDEQ031T10, GxEPD2_310_GDEQ031T10::HEIGHT> display(
   GxEPD2_310_GDEQ031T10(BOARD_SPI_CS, BOARD_SPI_DC, BOARD_SPI_RST, BOARD_SPI_BUSY));
@@ -49,4 +50,15 @@ void PimHardware::init()
   display.setCursor(20, 20);
   display.print("Starting...");
   display.display();
+}
+
+void PimHardware::loop()
+{
+  Serial.println("-- loop --");
+}
+
+
+void PimHardware::log(const string &message)
+{
+  Serial.println(message.c_str());
 }

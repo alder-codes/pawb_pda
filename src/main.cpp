@@ -15,12 +15,11 @@ static int is_running = 1;
 void setup()
 {
   PimHardware::init();
-  // write your initialization code here
 }
 
 void loop()
 {
-  // write your code here
+  PimHardware::loop();
 }
 
 

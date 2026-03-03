@@ -1,18 +1,19 @@
-//
-// Created by Alice Rhodes on 3/3/26.
-//
-
-#ifndef UNTITLED_HARDWARE_ESP32_H
-#define UNTITLED_HARDWARE_ESP32_H
+#ifndef PAWB_HARDWARE_ESP32_H
+#define PAWB_HARDWARE_ESP32_H
 
 #include <Arduino.h>
+#include <string>
+
+using namespace std;
+
 
 class PimHardware
 {
   public:
     static void init();
-    static void log( const String& message );
+    static void loop();
+    static void log( const string& message );
 };
 
 
-#endif //UNTITLED_HARDWARE_ESP32_H
+#endif //PAWB_HARDWARE_ESP32_H

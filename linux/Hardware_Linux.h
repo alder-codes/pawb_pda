@@ -1,5 +1,5 @@
-#ifndef PIM_HARDWARE_LINUX_H
-#define PIM_HARDWARE_LINUX_H
+#ifndef PAWB_HARDWARE_LINUX_H
+#define PAWB_HARDWARE_LINUX_H
 
 #include <string>
 
@@ -13,4 +13,4 @@ class PimHardware
 };
 
 
-#endif //PIM_HARDWARE_LINUX_H
+#endif //PAWB_HARDWARE_LINUX_H
