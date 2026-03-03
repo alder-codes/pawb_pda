@@ -13,6 +13,7 @@ class PimHardware
     static void init();
     static void loop();
     static void log( const string& message );
+    static void handle_exception( const exception &e );
 };
 
 

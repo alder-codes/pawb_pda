@@ -12,7 +12,6 @@ static GxEPD2_BW<GxEPD2_310_GDEQ031T10, GxEPD2_310_GDEQ031T10::HEIGHT> display(
   GxEPD2_310_GDEQ031T10(BOARD_SPI_CS, BOARD_SPI_DC, BOARD_SPI_RST, BOARD_SPI_BUSY));
 
 
-
 void PimHardware::init()
 {
   Serial.begin(115200);
@@ -48,17 +47,30 @@ void PimHardware::init()
   display.clearScreen();
   display.fillScreen(0xFFF);
   display.setCursor(20, 20);
-  display.print("Starting...");
+  display.print("-- setup --");
   display.display();
 }
 
 void PimHardware::loop()
 {
-  Serial.println("-- loop --");
+  try
+  {
+    Serial.println("-- loop --");
+  }
+  catch (const exception &e)
+  {
+    PimHardware::handle_exception( e );
+  }
 }
 
 
 void PimHardware::log(const string &message)
 {
   Serial.println(message.c_str());
+}
+
+void PimHardware::handle_exception( const exception &e )
+{
+  Serial.println("-- exception --");
+  Serial.println(e.what());
 }

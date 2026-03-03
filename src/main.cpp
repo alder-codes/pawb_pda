@@ -1,14 +1,15 @@
-//#define PLATFORM_LINUX
-#define PLATFORM_ESP32
-
-#ifdef PLATFORM_ESP32
-#include <Arduino.h>
-#include "Hardware_ESP32.h"
-#endif
+#define PLATFORM_LINUX
+//#define PLATFORM_ESP32
 
 #ifdef PLATFORM_LINUX
 #include "../linux/Hardware_Linux.h"
 #endif
+
+#ifdef PLATFORM_ESP32
+#include "Hardware_ESP32.h"
+#endif
+
+
 
 static int is_running = 1;
 
