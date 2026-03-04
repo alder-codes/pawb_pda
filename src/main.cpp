@@ -1,12 +1,20 @@
+// Only Uncomment one platform at a time
 //#define PLATFORM_LINUX
 #define PLATFORM_ESP32
+//----- end of Platform selection -----
 
+// The make files handles path differently than platform.io
+// Paths should be relative
 #ifdef PLATFORM_LINUX
 #include "../lib/Hardware_Linux/Hardware_Linux.h"
+#include "../lib/PimApp/PimApp.h"
 #endif
 
+// Platform.io manages paths so libraries can be added
+// without relative location
 #ifdef PLATFORM_ESP32
 #include <Hardware_ESP32.h>
+#include <PimApp.h>
 #endif
 
 
@@ -30,7 +38,15 @@ int main()
   setup();
   while( is_running > 0 )
   {
-    loop();
+    try
+    {
+      loop();
+    }
+    catch(std::exception& e)
+    {
+      PimHardware::handle_exception(e);
+      is_running = 0;
+    }
   }
   return 0;
 }

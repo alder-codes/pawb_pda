@@ -1,7 +1,7 @@
 CC = g++
 CFLAGS = -Wall -g
 TARGET = target/pimsys_linux
-SRC = src/main.cpp lib/Hardware_Linux/Hardware_Linux.cpp
+SRC = src/main.cpp lib/Hardware_Linux/Hardware_Linux.cpp lib/PimApp/PimApp.cpp
 INCLUDE = -Isrc -Ilinux
 
 all: $(TARGET)
